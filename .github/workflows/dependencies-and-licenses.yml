@@ -30,7 +30,6 @@ jobs:
               run: |
                   TMP_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'deps')
                   ( go mod tidy > /dev/null 2>&1; go list -m -json all | go-licence-detector -depsTemplate=../.dependencies/templates/dependencies.csv.tmpl -depsOut="${TMP_DIR}"/"${MODULE}"-dependencies.txt  -overrides=../.dependencies/overrides/overrides.json )
-                  done
                   cat "$TMP_DIR"/*.txt | sort | uniq > dependencies-and-licenses-go.txt
                   echo
                   echo "👍 done. written results to ./dependencies-and-licenses-go.txt"
