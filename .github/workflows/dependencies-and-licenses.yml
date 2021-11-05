@@ -31,7 +31,7 @@ jobs:
                   echo "start"
                   TMP_DIR=$(mktemp -d 2>/dev/null)
                   echo "$TMP_DIR"
-                  ( go mod tidy > /dev/null 2>&1; go list -m -json all | go-licence-detector -depsTemplate=.dependencies/templates/dependencies.csv.tmpl -depsOut="${TMP_DIR}"/"${MODULE}"-dependencies.txt )
+                  ( go mod tidy > /dev/null 2>&1; go list -m -json all | go-licence-detector -depsTemplate=.dependencies/templates/dependencies.csv.tmpl -depsOut="${TMP_DIR}"/dependencies.txt )
                   echo "cat"
                   cat "$TMP_DIR"/*.txt | sort | uniq > dependencies-and-licenses-go.txt
                   echo
