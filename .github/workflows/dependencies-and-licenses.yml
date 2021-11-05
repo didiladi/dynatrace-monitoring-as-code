@@ -37,7 +37,7 @@ jobs:
             - name: Node dependencies and licenses
               run: |
                   echo "🔍 Analyzing dependencies in documentation"
-                  ( cd dynatrace-oss/dynatrace-monitoring-as-code/documentation || return ; license-report --only-prod --output=csv > ../dependencies-and-licenses-node.txt )
+                  ( cd dynatrace-oss/dynatrace-monitoring-as-code/documentation || return ; license-report --only-prod --output=csv > ../dependencies-and-licenses-node.txt ; cd .. )
                   echo
                   echo "👍 done. written results to ./dependencies-and-licenses-node.txt"
                   cat dependencies-and-licenses-node.txt
