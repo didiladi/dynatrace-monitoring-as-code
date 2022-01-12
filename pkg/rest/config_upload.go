@@ -82,29 +82,11 @@ func upsertDynatraceObject(client *http.Client, fullUrl string, objectName strin
 			return api.DynatraceEntity{}, err
 		}
 
-		// It can happen that the post fails because config needs time to be propagated on all cluster nodes. If the error
-		// constraintViolations":[{"path":"name","message":"X must have a unique name...
-		// is returned, try once again
-		if !success(resp) && strings.Contains(string(resp.Body), "must have a unique name") {
-			// Try again after 5 seconds:
-			util.Log.Warn("\t\tConfig '%s - %s' needs to have a unique name. Waiting for 5 seconds before retry...", configType, objectName)
-			time.Sleep(5 * time.Second)
-			resp, err = post(client, path, body, apiToken)
-
-			if err != nil {
-				return api.DynatraceEntity{}, err
-			}
+		resp, err := retryOnTimingIssue(client, resp, configType, objectName, path, body, apiToken)
+		if err != nil {
+			return api.DynatraceEntity{}, err
 		}
-		// It can take longer until request attributes are ready to be used
-		if !success(resp) && strings.Contains(string(resp.Body), "must specify a known request attribute") {
-			util.Log.Warn("\t\tSpecified request attribute not known for %s. Waiting for 10 seconds before retry...", objectName)
-			time.Sleep(10 * time.Second)
-			resp, err = post(client, path, body, apiToken)
 
-			if err != nil {
-				return api.DynatraceEntity{}, err
-			}
-		}
 		if !success(resp) {
 			return api.DynatraceEntity{}, fmt.Errorf("Failed to create DT object %s (HTTP %d)!\n    Response was: %s", objectName, resp.StatusCode, string(resp.Body))
 		}
@@ -152,6 +134,62 @@ func upsertDynatraceObject(client *http.Client, fullUrl string, objectName strin
 	util.Log.Debug("\t\t\tCreated new object for %s (%s)", dtEntity.Name, dtEntity.Id)
 
 	return dtEntity, nil
+}
+
+func retryOnTimingIssue(client *http.Client, resp Response, configType string, objectName string, path string, body []byte, apiToken string) (Response, error) {
+
+	if !success(resp) {
+
+		// It can happen that the post fails because config needs time to be propagated on all cluster nodes. If the error
+		// constraintViolations":[{"path":"name","message":"X must have a unique name...
+		// is returned, try once again
+		if strings.Contains(string(resp.Body), "must have a unique name") {
+			// Try again after 5 seconds:
+			util.Log.Warn("\t\tConfig '%s - %s' needs to have a unique name. Waiting for 5 seconds before retry...", configType, objectName)
+			time.Sleep(5 * time.Second)
+			return post(client, path, body, apiToken)
+		}
+
+		// It can take longer until request attributes are ready to be used
+		if isRequestAttributeNotYetReady(resp)  ||
+			// It can take longer until applications are ready to be used in synthetic tests:
+			isApplicationNotReadyYet(resp) {
+			return retryPost(client, objectName, path, body, apiToken, 10 * time.Second)
+		}
+
+		// It can take longer until calculated service metrics are ready to be used in SLOs
+		if isCalculatedMetricNotReadyYet(resp) ||
+			// It can take longer until management zones are ready to be used in SLOs:
+			isManagementZoneNotReadyYet(resp) {
+			return retryPost(client, objectName, path, body, apiToken, 5 * time.Second)
+		}
+
+		// TODO credential vault config
+	}
+
+	return resp, nil
+}
+
+func retryPost(client *http.Client, objectName string, path string, body []byte, apiToken string, timeout time.Duration) (Response, error) {
+	util.Log.Warn("\t\tDependency of config %s was not available. Waiting for %s before retry...", objectName, timeout)
+	time.Sleep(timeout)
+	return post(client, path, body, apiToken)
+}
+
+func isCalculatedMetricNotReadyYet(resp Response) bool {
+	return strings.Contains(string(resp.Body), "Metric selector for numerator is invalid.")
+}
+
+func isRequestAttributeNotYetReady(resp Response) bool {
+	return strings.Contains(string(resp.Body), "must specify a known request attribute")
+}
+
+func isManagementZoneNotReadyYet(resp Response) bool {
+	return strings.Contains(string(resp.Body), "Entity selector is invalid")
+}
+
+func isApplicationNotReadyYet(resp Response) bool {
+	return strings.Contains(string(resp.Body), "Unknown application(s)")
 }
 
 func joinUrl(urlBase string, path string) string {
